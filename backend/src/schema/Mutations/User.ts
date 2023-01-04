@@ -1,6 +1,5 @@
-import { GraphQLBoolean, GraphQLID, GraphQLInputObjectType, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLString, graphqlSync } from "graphql";
+import { GraphQLBoolean, GraphQLID, GraphQLInputObjectType, GraphQLNonNull, GraphQLString, GraphQLInt } from "graphql";
 import { User } from "../../entities/User";
-import { hashPassword, comparePassword } from "../../libs/bcrypt";
 import { MessageType } from "../TypeDefs/Message";
 import { UserType } from "../TypeDefs/User";
 
@@ -8,23 +7,18 @@ export const CREATE_USER = {
   type: UserType,
   args: {
     name: { type: new GraphQLNonNull(GraphQLString) },
-    username: { type: new GraphQLNonNull(GraphQLString) },
-    password: { type: new GraphQLNonNull(GraphQLString) },
+    email: { type: new GraphQLNonNull(GraphQLString) },
+    age: { type: new GraphQLNonNull(GraphQLInt) },
   },
   async resolve(parent: any, args: any) {
-    const { name, username, password } = args;
-
-    const encryptPassword = await hashPassword(password);
-
-    // User.create
+    const { name, email, age } = args;
     const result = await User.insert({
       name,
-      username,
-      password,
+      email,
+      age,
     });
 
-    return { ...args, id: result.identifiers[0].id, password: encryptPassword };
-  //return args
+    return { ...args, id: result.identifiers[0].id };
   },
 };
 
@@ -33,8 +27,8 @@ export const DELETE_USER = {
   args: {
     id: { type: new GraphQLNonNull(GraphQLID) },
   },
-  async resolve(_: any, { id }: any) {
-    const result = await User.delete({ id });
+  async resolve(parent: any, args: any) {
+    const result = await User.delete({ id: args.id });
     if (result.affected! > 0) return true;
     return false;
   },
@@ -43,37 +37,20 @@ export const DELETE_USER = {
 export const UPDATE_USER = {
   type: MessageType,
   args: {
-    id: { type: GraphQLID },
+    id: { type: new GraphQLNonNull(GraphQLID) },
     input: {
       type: new GraphQLInputObjectType({
         name: "UserInput",
         fields: () => ({
           name: { type: GraphQLString },
-          username: { type: GraphQLString },
-          oldPassword: { type: GraphQLString },
-          newPassword: { type: GraphQLString },
+          email: { type: GraphQLString },
+          age: { type: GraphQLInt },
         }),
       }),
     },
   },
-  async resolve(_: any, { id, input }: any) {
-    const userFound = await User.findOneBy({ id });
-    if (!userFound) throw new Error("User not found");
-
-    // Compare old password with the new password
-    const isMatch = await comparePassword(userFound?.password as string, input.oldPassword);
-    if (!isMatch) throw new Error("Passwords does not match");
-
-    // Hasing the password and deleteting oldPassword and new Password
-    const newPassword = await hashPassword(input.newPassword);
-    delete input.oldPassword;
-    delete input.newPassword;
-
-    // Adding passsword to the input for update
-    input.password = newPassword;
-
+  async resolve(parent: any, { id, input }: any) {
     const response = await User.update({ id }, input);
-
     if (response.affected === 0) return { message: "User not found" };
 
     return {
